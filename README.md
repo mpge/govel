@@ -269,13 +269,22 @@ return [
 ];
 ```
 
-## Roadmap
+## Govel Monitor
 
-- [x] Process driver
-- [x] gRPC driver (HTTP/JSON bridge)
-- [x] Queue integration
-- [x] Distributed workers with failover
-- [ ] Govel Monitor — real-time task dashboard ([mpge/govel-monitor](https://github.com/mpge/govel-monitor))
+<p align="center">
+    <a href="https://github.com/mpge/govel-monitor">
+        <img src="art/monitor-logo.png" width="500" alt="Govel Monitor — real-time task monitoring dashboard">
+    </a>
+</p>
+
+Track every Go task execution with a real-time dashboard. Zero code changes — just install and go.
+
+```bash
+composer require mpge/govel-monitor
+php artisan migrate
+```
+
+Visit `/govel-monitor` to see your dashboard. [Learn more →](https://github.com/mpge/govel-monitor)
 
 ## License
 
