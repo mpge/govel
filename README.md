@@ -1,6 +1,24 @@
-# Govel
+<p align="center">
+    <img src="art/logo.png" width="600" alt="Govel — Go-powered task execution for Laravel">
+</p>
 
-Execute high-performance Go tasks from Laravel as if they were native jobs.
+<p align="center">
+    <a href="https://packagist.org/packages/mpge/govel"><img src="https://img.shields.io/packagist/v/mpge/govel.svg?style=flat-square" alt="Latest Version on Packagist"></a>
+    <a href="https://packagist.org/packages/mpge/govel"><img src="https://img.shields.io/packagist/dt/mpge/govel.svg?style=flat-square" alt="Total Downloads"></a>
+    <a href="https://packagist.org/packages/mpge/govel"><img src="https://img.shields.io/packagist/php-v/mpge/govel.svg?style=flat-square" alt="PHP Version"></a>
+    <a href="https://github.com/mpge/govel/blob/main/LICENSE"><img src="https://img.shields.io/packagist/l/mpge/govel.svg?style=flat-square" alt="License"></a>
+</p>
+
+<p align="center">
+    Execute high-performance Go tasks from Laravel as if they were native jobs.<br>
+    No extensions. No embedding. Just blazing-fast Go binaries behind a clean Laravel API.
+</p>
+
+---
+
+## Why Govel?
+
+Some workloads — image processing, data crunching, cryptography, file parsing — are simply faster in Go. Govel lets you offload these to compiled Go binaries while keeping your application logic in Laravel.
 
 ```php
 use Govel\Govel\Facades\Govel;
@@ -31,7 +49,7 @@ Govel::dispatch(ProcessImage::class, [
 ## Installation
 
 ```bash
-composer require govel/govel
+composer require mpge/govel
 ```
 
 Publish the config file:
@@ -42,21 +60,19 @@ php artisan vendor:publish --tag=govel-config
 
 ## Configuration
 
-**config/govel.php**
+`config/govel.php`:
 
 | Key | Default | Description |
 |---|---|---|
-| `driver` | `process` | Execution driver (`process`) |
+| `driver` | `process` | Execution driver |
 | `bin_path` | `base_path('bin')` | Directory containing compiled Go binaries |
 | `timeout` | `30` | Max execution time in seconds |
 
-## Creating a Task
+## Quick Start
 
-### 1. Define the PHP Task
+### 1. Define a PHP Task
 
 ```php
-<?php
-
 namespace App\Tasks;
 
 use Govel\Govel\Contracts\Task;
@@ -70,7 +86,7 @@ class ProcessImage implements Task
 }
 ```
 
-The `name()` method maps directly to a binary: `bin/process-image`.
+The `name()` method maps directly to a binary in your `bin/` directory.
 
 ### 2. Write the Go Worker
 
@@ -92,7 +108,7 @@ func main() {
     var payload map[string]interface{}
     json.Unmarshal(input, &payload)
 
-    // Do your work here...
+    // Your processing logic here...
 
     result, _ := json.Marshal(map[string]interface{}{
         "status": "done",
@@ -101,31 +117,31 @@ func main() {
 }
 ```
 
-### 3. Compile the Worker
+### 3. Compile
 
 ```bash
 cd bin/workers/process-image
 go build -o ../../process-image .
 ```
 
-On Windows:
+### 4. Run
 
-```bash
-go build -o ../../process-image.exe .
+```php
+$result = Govel::run(ProcessImage::class, ['path' => '/tmp/photo.jpg']);
 ```
 
 ## Go Worker Contract
 
 Every Go binary must:
 
-1. **Read JSON from stdin** — the payload passed from PHP
+1. **Read JSON from stdin** — the payload from PHP
 2. **Write JSON to stdout** — the response back to PHP
-3. **Exit 0 on success**, non-zero on failure
-4. **Write errors to stderr** — captured by Govel for logging
+3. **Exit 0** on success, non-zero on failure
+4. **Write errors to stderr** — captured for logging
 
 ## Result DTO
 
-`Govel::run()` returns a `Result` object:
+`Govel::run()` returns an immutable `Result` object:
 
 ```php
 $result->success;   // bool
@@ -145,23 +161,24 @@ try {
 } catch (BinaryNotFoundException $e) {
     // Binary not found at expected path
 } catch (TaskExecutionException $e) {
-    // Process timed out or failed critically
+    // Process timed out or failed
 }
 
-// Non-critical failures are returned in the Result:
+// Non-critical failures return in the Result:
 if (! $result->success) {
     logger()->error($result->error);
 }
 ```
 
-## Extending Govel
+## Extending with Custom Drivers
 
-Register custom drivers:
+Govel is built for extensibility. Register your own drivers:
 
 ```php
-use Govel\Govel\Facades\Govel;
-
 Govel::extend('grpc', new GrpcDriver(/* ... */));
+
+// Then use it:
+Govel::driver('grpc')->run($task, $payload);
 ```
 
 ## Architecture
@@ -175,6 +192,13 @@ Laravel (PHP)
           → Result DTO
 ```
 
+## Roadmap
+
+- [ ] gRPC driver
+- [ ] Queue integration
+- [ ] Distributed workers
+- [ ] Horizon-style dashboard
+
 ## License
 
-MIT
+The MIT License (MIT). Please see [License File](LICENSE) for more information.
