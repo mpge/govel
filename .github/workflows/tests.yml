@@ -32,5 +32,8 @@ jobs:
           composer require "illuminate/contracts:${{ matrix.laravel }}" "illuminate/support:${{ matrix.laravel }}" --no-update
           composer install --prefer-dist --no-interaction --no-progress
 
+      - name: Prepare test fixtures
+        run: chmod +x tests/fixtures/*
+
       - name: Run tests
         run: vendor/bin/phpunit

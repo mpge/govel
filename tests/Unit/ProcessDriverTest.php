@@ -7,18 +7,29 @@ use Mpge\Govel\Drivers\ProcessDriver;
 use Mpge\Govel\DTO\Result;
 use Mpge\Govel\Exceptions\BinaryNotFoundException;
 use Illuminate\Support\Facades\Facade;
-use Illuminate\Support\Facades\Log;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
 class ProcessDriverTest extends TestCase
 {
-    private function binPath(): string
+    private function fixturesPath(): string
     {
-        return dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'bin';
+        return dirname(__DIR__) . DIRECTORY_SEPARATOR . 'fixtures';
     }
 
-    private function makeTask(string $name = 'process-image'): Task
+    private function hasEchoTask(): bool
+    {
+        $path = $this->fixturesPath() . DIRECTORY_SEPARATOR . 'echo-task';
+
+        // On Windows, the shebang script won't run directly
+        if (PHP_OS_FAMILY === 'Windows') {
+            return false;
+        }
+
+        return file_exists($path) && is_executable($path);
+    }
+
+    private function makeTask(string $name = 'echo-task'): Task
     {
         return new class($name) implements Task {
             public function __construct(private string $taskName) {}
@@ -33,19 +44,21 @@ class ProcessDriverTest extends TestCase
     #[Test]
     public function run_executes_binary_and_returns_successful_result(): void
     {
+        if (! $this->hasEchoTask()) {
+            $this->markTestSkipped('echo-task fixture not available on this platform.');
+        }
+
         $driver = new ProcessDriver(
-            binPath: $this->binPath(),
+            binPath: $this->fixturesPath(),
             timeout: 30,
         );
 
-        $task = $this->makeTask('process-image');
-        $result = $driver->run($task, ['path' => 'test.jpg']);
+        $result = $driver->run($this->makeTask(), ['hello' => 'world']);
 
         $this->assertInstanceOf(Result::class, $result);
         $this->assertTrue($result->success);
-        $this->assertIsArray($result->output);
-        $this->assertArrayHasKey('status', $result->output);
-        $this->assertSame('processed', $result->output['status']);
+        $this->assertSame('ok', $result->output['status']);
+        $this->assertSame(['hello' => 'world'], $result->output['echo']);
         $this->assertNull($result->error);
         $this->assertGreaterThan(0, $result->duration);
     }
@@ -53,26 +66,28 @@ class ProcessDriverTest extends TestCase
     #[Test]
     public function run_returns_failure_result_when_process_exits_non_zero(): void
     {
+        if (! $this->hasEchoTask()) {
+            $this->markTestSkipped('echo-task fixture not available on this platform.');
+        }
+
         $driver = new ProcessDriver(
-            binPath: $this->binPath(),
+            binPath: $this->fixturesPath(),
             timeout: 30,
         );
 
-        $task = $this->makeTask('process-image');
-
-        // The binary requires a "path" field; omitting it causes exit code 1.
-        $result = $driver->run($task, ['action' => 'ping']);
+        $result = $driver->run($this->makeTask(), ['fail' => true]);
 
         $this->assertInstanceOf(Result::class, $result);
         $this->assertFalse($result->success);
         $this->assertNotNull($result->error);
+        $this->assertStringContainsString('forced failure', $result->error);
     }
 
     #[Test]
     public function run_throws_binary_not_found_exception_when_binary_missing(): void
     {
         $driver = new ProcessDriver(
-            binPath: $this->binPath(),
+            binPath: $this->fixturesPath(),
             timeout: 30,
         );
 
@@ -86,27 +101,23 @@ class ProcessDriverTest extends TestCase
     #[Test]
     public function dispatch_completes_without_error(): void
     {
-        // dispatch() uses Log::warning() internally, so we need a facade root.
+        if (! $this->hasEchoTask()) {
+            $this->markTestSkipped('echo-task fixture not available on this platform.');
+        }
+
         $app = new \Illuminate\Container\Container();
         $app->instance('log', new class {
-            public function warning(string $message, array $context = []): void
-            {
-                // no-op for testing
-            }
+            public function warning(string $message, array $context = []): void {}
         });
         Facade::setFacadeApplication($app);
 
         $driver = new ProcessDriver(
-            binPath: $this->binPath(),
+            binPath: $this->fixturesPath(),
             timeout: 30,
         );
 
-        $task = $this->makeTask('process-image');
+        $driver->dispatch($this->makeTask(), ['hello' => 'world']);
 
-        // dispatch() is fire-and-forget; it should return void without throwing.
-        $driver->dispatch($task, ['path' => 'test.jpg']);
-
-        // If we reach here, dispatch completed without error.
         $this->assertTrue(true);
 
         Facade::clearResolvedInstances();
@@ -117,7 +128,7 @@ class ProcessDriverTest extends TestCase
     public function dispatch_throws_binary_not_found_exception_for_missing_binary(): void
     {
         $driver = new ProcessDriver(
-            binPath: $this->binPath(),
+            binPath: $this->fixturesPath(),
             timeout: 30,
         );
 

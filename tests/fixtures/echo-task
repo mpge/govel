@@ -1,0 +1,19 @@
+#!/usr/bin/env php
+<?php
+// Simple test binary: reads JSON from stdin, echoes it back with status
+$input = json_decode(file_get_contents('php://stdin'), true);
+
+if (json_last_error() !== JSON_ERROR_NONE || !is_array($input)) {
+    fwrite(STDERR, 'invalid input');
+    exit(1);
+}
+
+if (isset($input['fail']) && $input['fail']) {
+    fwrite(STDERR, 'forced failure');
+    exit(1);
+}
+
+echo json_encode([
+    'status' => 'ok',
+    'echo' => $input,
+]);
