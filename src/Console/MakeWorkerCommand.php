@@ -51,8 +51,8 @@ class MakeWorkerCommand extends Command
         )
 
         // Request represents the incoming JSON payload from PHP.
+        // TODO: Define your input fields here.
         type Request struct {
-        	// TODO: Define your input fields here.
         	Input string `json:"input"`
         }
 
@@ -84,12 +84,15 @@ class MakeWorkerCommand extends Command
         		Duration: time.Since(start).String(),
         	}
 
-        	out, _ := json.Marshal(resp)
-        	fmt.Println(string(out))
+        	out, err := json.Marshal(resp)
+        	if err != nil {
+        		fatal("failed to marshal response: " + err.Error())
+        	}
+        	fmt.Print(string(out))
         }
 
         func fatal(msg string) {
-        	fmt.Fprintf(os.Stderr, `{"error":"%s"}`, msg)
+        	fmt.Fprint(os.Stderr, msg)
         	os.Exit(1)
         }
         GO;

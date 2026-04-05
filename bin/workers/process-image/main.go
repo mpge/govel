@@ -65,11 +65,14 @@ func main() {
 		Duration:  time.Since(start).String(),
 	}
 
-	out, _ := json.Marshal(resp)
-	fmt.Println(string(out))
+	out, err := json.Marshal(resp)
+	if err != nil {
+		fatal("failed to marshal response: " + err.Error())
+	}
+	fmt.Print(string(out))
 }
 
 func fatal(msg string) {
-	fmt.Fprintf(os.Stderr, `{"error":"%s"}`, msg)
+	fmt.Fprint(os.Stderr, msg)
 	os.Exit(1)
 }
