@@ -273,7 +273,7 @@ return [
 
 <p align="center">
     <a href="https://github.com/mpge/govel-monitor">
-        <img src="art/monitor-logo.png" width="500" alt="Govel Monitor — real-time task monitoring dashboard">
+        <img src="art/govel-monitor.png" width="500" alt="Govel Monitor — real-time task monitoring dashboard">
     </a>
 </p>
 
