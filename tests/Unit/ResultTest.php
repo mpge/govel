@@ -1,8 +1,8 @@
 <?php
 
-namespace Govel\Govel\Tests\Unit;
+namespace Mpge\Govel\Tests\Unit;
 
-use Govel\Govel\DTO\Result;
+use Mpge\Govel\DTO\Result;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 

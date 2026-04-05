@@ -1,11 +1,11 @@
 <?php
 
-namespace Govel\Govel\Services;
+namespace Mpge\Govel\Services;
 
-use Govel\Govel\Contracts\Driver;
-use Govel\Govel\Contracts\Task;
-use Govel\Govel\Drivers\ProcessDriver;
-use Govel\Govel\DTO\Result;
+use Mpge\Govel\Contracts\Driver;
+use Mpge\Govel\Contracts\Task;
+use Mpge\Govel\Drivers\ProcessDriver;
+use Mpge\Govel\DTO\Result;
 use Illuminate\Contracts\Container\Container;
 use InvalidArgumentException;
 

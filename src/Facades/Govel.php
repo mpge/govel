@@ -1,19 +1,19 @@
 <?php
 
-namespace Govel\Govel\Facades;
+namespace Mpge\Govel\Facades;
 
-use Govel\Govel\Contracts\Driver;
-use Govel\Govel\DTO\Result;
-use Govel\Govel\Services\GoManager;
+use Mpge\Govel\Contracts\Driver;
+use Mpge\Govel\DTO\Result;
+use Mpge\Govel\Services\GoManager;
 use Illuminate\Support\Facades\Facade;
 
 /**
- * @method static Result run(string|\Govel\Govel\Contracts\Task $task, array $payload = [])
- * @method static void dispatch(string|\Govel\Govel\Contracts\Task $task, array $payload = [])
+ * @method static Result run(string|\Mpge\Govel\Contracts\Task $task, array $payload = [])
+ * @method static void dispatch(string|\Mpge\Govel\Contracts\Task $task, array $payload = [])
  * @method static Driver driver(?string $name = null)
  * @method static GoManager extend(string $name, Driver $driver)
  *
- * @see \Govel\Govel\Services\GoManager
+ * @see \Mpge\Govel\Services\GoManager
  */
 class Govel extends Facade
 {

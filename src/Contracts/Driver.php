@@ -1,8 +1,8 @@
 <?php
 
-namespace Govel\Govel\Contracts;
+namespace Mpge\Govel\Contracts;
 
-use Govel\Govel\DTO\Result;
+use Mpge\Govel\DTO\Result;
 
 interface Driver
 {

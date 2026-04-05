@@ -21,8 +21,8 @@
 Some workloads — image processing, data crunching, cryptography, file parsing — are simply faster in Go. Govel lets you offload these to compiled Go binaries while keeping your application logic in Laravel.
 
 ```php
-use Govel\Govel\Facades\Govel;
-use Govel\Govel\Tasks\ProcessImage;
+use Mpge\Govel\Facades\Govel;
+use Mpge\Govel\Tasks\ProcessImage;
 
 // Synchronous — blocks until the Go binary returns
 $result = Govel::run(ProcessImage::class, [
@@ -75,7 +75,7 @@ php artisan vendor:publish --tag=govel-config
 ```php
 namespace App\Tasks;
 
-use Govel\Govel\Contracts\Task;
+use Mpge\Govel\Contracts\Task;
 
 class ProcessImage implements Task
 {
@@ -153,8 +153,8 @@ $result->duration;  // float (milliseconds)
 ## Error Handling
 
 ```php
-use Govel\Govel\Exceptions\BinaryNotFoundException;
-use Govel\Govel\Exceptions\TaskExecutionException;
+use Mpge\Govel\Exceptions\BinaryNotFoundException;
+use Mpge\Govel\Exceptions\TaskExecutionException;
 
 try {
     $result = Govel::run(ProcessImage::class, $payload);

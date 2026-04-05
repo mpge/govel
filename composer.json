@@ -20,21 +20,21 @@
     },
     "autoload": {
         "psr-4": {
-            "Govel\\Govel\\": "src/"
+            "Mpge\\Govel\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Govel\\Govel\\Tests\\": "tests/"
+            "Mpge\\Govel\\Tests\\": "tests/"
         }
     },
     "extra": {
         "laravel": {
             "providers": [
-                "Govel\\Govel\\GovelServiceProvider"
+                "Mpge\\Govel\\GovelServiceProvider"
             ],
             "aliases": {
-                "Govel": "Govel\\Govel\\Facades\\Govel"
+                "Govel": "Mpge\\Govel\\Facades\\Govel"
             }
         }
     },

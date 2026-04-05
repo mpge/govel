@@ -1,6 +1,6 @@
 <?php
 
-namespace Govel\Govel\Exceptions;
+namespace Mpge\Govel\Exceptions;
 
 use RuntimeException;
 

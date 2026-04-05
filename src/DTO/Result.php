@@ -1,6 +1,6 @@
 <?php
 
-namespace Govel\Govel\DTO;
+namespace Mpge\Govel\DTO;
 
 use Illuminate\Contracts\Support\Arrayable;
 use JsonSerializable;

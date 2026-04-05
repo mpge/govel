@@ -1,6 +1,6 @@
 <?php
 
-namespace Govel\Govel\Contracts;
+namespace Mpge\Govel\Contracts;
 
 interface Task
 {

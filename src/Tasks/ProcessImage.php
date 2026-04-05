@@ -1,8 +1,8 @@
 <?php
 
-namespace Govel\Govel\Tasks;
+namespace Mpge\Govel\Tasks;
 
-use Govel\Govel\Contracts\Task;
+use Mpge\Govel\Contracts\Task;
 
 class ProcessImage implements Task
 {

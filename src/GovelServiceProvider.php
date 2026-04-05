@@ -1,8 +1,8 @@
 <?php
 
-namespace Govel\Govel;
+namespace Mpge\Govel;
 
-use Govel\Govel\Services\GoManager;
+use Mpge\Govel\Services\GoManager;
 use Illuminate\Support\ServiceProvider;
 
 class GovelServiceProvider extends ServiceProvider

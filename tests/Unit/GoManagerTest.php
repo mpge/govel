@@ -1,11 +1,11 @@
 <?php
 
-namespace Govel\Govel\Tests\Unit;
+namespace Mpge\Govel\Tests\Unit;
 
-use Govel\Govel\Contracts\Driver;
-use Govel\Govel\Contracts\Task;
-use Govel\Govel\DTO\Result;
-use Govel\Govel\Services\GoManager;
+use Mpge\Govel\Contracts\Driver;
+use Mpge\Govel\Contracts\Task;
+use Mpge\Govel\DTO\Result;
+use Mpge\Govel\Services\GoManager;
 use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
 use PHPUnit\Framework\Attributes\Test;
