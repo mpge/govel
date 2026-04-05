@@ -2,10 +2,10 @@
 
 namespace Mpge\Govel\Drivers;
 
+use Mpge\Govel\Concerns\LogsMessages;
 use Mpge\Govel\Contracts\Driver;
 use Mpge\Govel\Contracts\Task;
 use Mpge\Govel\DTO\Result;
-use Mpge\Govel\Exceptions\TaskExecutionException;
 
 /**
  * Distributes Go tasks across multiple worker nodes.
@@ -16,6 +16,8 @@ use Mpge\Govel\Exceptions\TaskExecutionException;
  */
 class DistributedDriver implements Driver
 {
+    use LogsMessages;
+
     /** @var array<int, GrpcDriver> */
     protected array $nodes = [];
 
@@ -75,7 +77,7 @@ class DistributedDriver implements Driver
                 }
 
                 return $result;
-            } catch (TaskExecutionException $e) {
+            } catch (\Throwable $e) {
                 $this->connections[$nodeIndex]--;
                 $this->markUnhealthy($nodeIndex);
 
@@ -90,15 +92,30 @@ class DistributedDriver implements Driver
 
     public function dispatch(Task $task, array $payload = []): void
     {
-        $nodeIndex = $this->selectNode();
+        $attempts = count($this->nodes);
 
-        if ($nodeIndex === null) {
-            $this->log('No healthy Govel worker nodes available for dispatch');
+        for ($i = 0; $i < $attempts; $i++) {
+            $nodeIndex = $this->selectNode();
 
-            return;
+            if ($nodeIndex === null) {
+                $this->log('No healthy Govel worker nodes available for dispatch');
+
+                return;
+            }
+
+            try {
+                $this->nodes[$nodeIndex]->dispatch($task, $payload);
+
+                return;
+            } catch (\Throwable $e) {
+                $this->markUnhealthy($nodeIndex);
+                $this->log("Govel node {$nodeIndex} dispatch failed, trying next: {$e->getMessage()}");
+
+                continue;
+            }
         }
 
-        $this->nodes[$nodeIndex]->dispatch($task, $payload);
+        $this->log('All Govel worker nodes failed for dispatch');
     }
 
     /**
@@ -209,18 +226,4 @@ class DistributedDriver implements Driver
         $this->log("Govel node {$index} ({$this->nodeConfigs[$index]['host']}:{$this->nodeConfigs[$index]['port']}) marked unhealthy");
     }
 
-    protected function log(string $message): void
-    {
-        if (class_exists(\Illuminate\Support\Facades\Log::class)) {
-            try {
-                \Illuminate\Support\Facades\Log::warning($message);
-
-                return;
-            } catch (\Throwable) {
-                // Facade not booted
-            }
-        }
-
-        error_log($message);
-    }
 }

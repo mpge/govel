@@ -47,7 +47,8 @@ class BuildCommand extends Command
             $this->info("Building [{$workerName}]...");
 
             $ext = PHP_OS_FAMILY === 'Windows' ? '.exe' : '';
-            $outputPath = "../../{$workerName}{$ext}";
+            $binDir = config('govel.bin_path', base_path('bin'));
+            $outputPath = $binDir . DIRECTORY_SEPARATOR . "{$workerName}{$ext}";
 
             $process = new Process(['go', 'build', '-o', $outputPath, '.'], $workerDir);
             $process->setTimeout(120);

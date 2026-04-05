@@ -6,6 +6,7 @@ use Illuminate\Foundation\Bus\PendingDispatch;
 
 class PendingGovelDispatch
 {
+    protected bool $dispatched = false;
     protected ?string $queue = null;
     protected ?string $connection = null;
     protected ?int $delay = null;
@@ -60,11 +61,15 @@ class PendingGovelDispatch
             $job->delay($this->delay);
         }
 
+        $this->dispatched = true;
+
         return dispatch($job);
     }
 
     public function __destruct()
     {
-        $this->dispatch();
+        if (! $this->dispatched) {
+            $this->dispatch();
+        }
     }
 }

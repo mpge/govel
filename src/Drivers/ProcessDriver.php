@@ -61,12 +61,6 @@ class ProcessDriver implements Driver
 
         $process = $this->createProcess($binaryPath, $input, async: true);
         $process->start();
-
-        $process->wait(function (string $type, string $buffer) use ($task) {
-            if ($type === Process::ERR) {
-                Log::warning("Govel async task [{$task->name()}] stderr: {$buffer}");
-            }
-        });
     }
 
     protected function createProcess(string $binaryPath, string $input, bool $async = false): Process
@@ -96,10 +90,6 @@ class ProcessDriver implements Driver
 
     protected function buildEnvironment(): ?array
     {
-        if (empty($this->envPassthrough)) {
-            return null; // inherit all
-        }
-
         if ($this->envPassthrough === ['*']) {
             return null; // explicitly inherit all
         }
@@ -114,7 +104,7 @@ class ProcessDriver implements Driver
             }
         }
 
-        return $env ?: null;
+        return $env;
     }
 
     protected function validatePayloadSize(string $input, string $taskName): void
@@ -126,8 +116,19 @@ class ProcessDriver implements Driver
         }
     }
 
+    protected function validateTaskName(string $name): void
+    {
+        if (! preg_match('/^[a-zA-Z0-9_-]{1,128}$/', $name)) {
+            throw new \InvalidArgumentException(
+                "Invalid task name [{$name}]. Task names must match /^[a-zA-Z0-9_-]{1,128}$/."
+            );
+        }
+    }
+
     protected function resolveBinaryPath(Task $task): string
     {
+        $this->validateTaskName($task->name());
+
         $binary = $task->name();
 
         if (PHP_OS_FAMILY === 'Windows' && ! str_ends_with($binary, '.exe')) {

@@ -27,6 +27,15 @@ final readonly class Result implements Arrayable, JsonSerializable
             );
         }
 
+        if (!is_array($decoded)) {
+            return new self(
+                success: false,
+                output: [],
+                error: 'Go binary returned non-object JSON response',
+                duration: $duration,
+            );
+        }
+
         return new self(
             success: true,
             output: $decoded,

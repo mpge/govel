@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -21,13 +22,16 @@ import (
 // All values can be set via environment variables or govel-server.json.
 type Config struct {
 	Port            int    `json:"port"`
+	Host            string `json:"host"`
 	BinPath         string `json:"bin_path"`
-	Timeout         int    `json:"timeout"`           // task execution timeout in seconds, 0 = no timeout
-	MaxRequestBody  int64  `json:"max_request_body"`  // max request body size in bytes, 0 = 10MB default
-	ReadTimeout     int    `json:"read_timeout"`      // HTTP read timeout in seconds
-	WriteTimeout    int    `json:"write_timeout"`     // HTTP write timeout in seconds
-	IdleTimeout     int    `json:"idle_timeout"`      // HTTP idle timeout in seconds
-	ShutdownTimeout int    `json:"shutdown_timeout"`  // graceful shutdown timeout in seconds
+	Timeout         int    `json:"timeout"`            // task execution timeout in seconds, 0 = no timeout
+	MaxRequestBody  int64  `json:"max_request_body"`   // max request body size in bytes, 0 = 10MB default
+	ReadTimeout     int    `json:"read_timeout"`       // HTTP read timeout in seconds
+	WriteTimeout    int    `json:"write_timeout"`      // HTTP write timeout in seconds
+	IdleTimeout     int    `json:"idle_timeout"`       // HTTP idle timeout in seconds
+	ShutdownTimeout int    `json:"shutdown_timeout"`   // graceful shutdown timeout in seconds
+	AuthToken       string `json:"auth_token"`         // bearer token for authentication
+	MaxConcurrent   int    `json:"max_concurrent"`     // max concurrent task executions
 }
 
 // Request represents an incoming task execution request from PHP.
@@ -46,16 +50,19 @@ type Response struct {
 	RequestID string          `json:"request_id,omitempty"`
 }
 
-var requestCounter uint64
+var requestCounter atomic.Uint64
 
 func main() {
 	config := loadConfig()
 
+	// Create concurrency limiter semaphore
+	semaphore := make(chan struct{}, config.MaxConcurrent)
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("/govel/execute", makeExecuteHandler(config))
+	mux.HandleFunc("/govel/execute", makeExecuteHandler(config, semaphore))
 	mux.HandleFunc("/govel/health", healthHandler)
 
-	addr := fmt.Sprintf(":%d", config.Port)
+	addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
 
 	server := &http.Server{
 		Addr:         addr,
@@ -99,6 +106,7 @@ func (c Config) maxBodyLimit() int64 {
 func loadConfig() Config {
 	config := Config{
 		Port:            9800,
+		Host:            "127.0.0.1",
 		BinPath:         "./bin",
 		Timeout:         30,
 		MaxRequestBody:  0, // 0 = use default (10MB)
@@ -106,8 +114,17 @@ func loadConfig() Config {
 		WriteTimeout:    35,
 		IdleTimeout:     120,
 		ShutdownTimeout: 10,
+		MaxConcurrent:   50,
 	}
 
+	// Load config file first (lower precedence)
+	if data, err := os.ReadFile("govel-server.json"); err == nil {
+		if err := json.Unmarshal(data, &config); err != nil {
+			log.Printf("Warning: failed to parse govel-server.json: %v", err)
+		}
+	}
+
+	// Env var overrides (higher precedence, 12-factor)
 	envInt := func(key string, target *int) {
 		if v := os.Getenv(key); v != "" {
 			fmt.Sscanf(v, "%d", target)
@@ -126,16 +143,18 @@ func loadConfig() Config {
 	envInt("GOVEL_SERVER_IDLE_TIMEOUT", &config.IdleTimeout)
 	envInt("GOVEL_SERVER_SHUTDOWN_TIMEOUT", &config.ShutdownTimeout)
 	envInt64("GOVEL_SERVER_MAX_BODY", &config.MaxRequestBody)
+	envInt("GOVEL_MAX_CONCURRENT", &config.MaxConcurrent)
+
+	if host := os.Getenv("GOVEL_HOST"); host != "" {
+		config.Host = host
+	}
 
 	if binPath := os.Getenv("GOVEL_BIN_PATH"); binPath != "" {
 		config.BinPath = binPath
 	}
 
-	// Config file overrides env
-	if data, err := os.ReadFile("govel-server.json"); err == nil {
-		if err := json.Unmarshal(data, &config); err != nil {
-			log.Printf("Warning: failed to parse govel-server.json: %v", err)
-		}
+	if authToken := os.Getenv("GOVEL_AUTH_TOKEN"); authToken != "" {
+		config.AuthToken = authToken
 	}
 
 	// Resolve bin_path to absolute
@@ -143,26 +162,58 @@ func loadConfig() Config {
 		config.BinPath = abs
 	}
 
+	// Ensure max_concurrent is at least 1
+	if config.MaxConcurrent < 1 {
+		config.MaxConcurrent = 50
+	}
+
 	return config
 }
 
-func makeExecuteHandler(config Config) http.HandlerFunc {
+func makeExecuteHandler(config Config, semaphore chan struct{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeError(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
-		requestCounter++
-		reqID := fmt.Sprintf("govel-%d-%d", time.Now().UnixMilli(), requestCounter)
+		// Auth token check
+		if config.AuthToken != "" {
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				writeError(w, "missing authorization header", http.StatusUnauthorized)
+				return
+			}
+			const bearerPrefix = "Bearer "
+			if !strings.HasPrefix(authHeader, bearerPrefix) || authHeader[len(bearerPrefix):] != config.AuthToken {
+				writeError(w, "invalid authorization token", http.StatusUnauthorized)
+				return
+			}
+		}
+
+		// Block cross-origin requests
+		if r.Header.Get("Origin") != "" {
+			writeError(w, "cross-origin requests are not allowed", http.StatusForbidden)
+			return
+		}
+
+		id := requestCounter.Add(1)
+		reqID := fmt.Sprintf("govel-%d-%d", time.Now().UnixMilli(), id)
 
 		// Limit request body size
-		body, err := io.ReadAll(io.LimitReader(r.Body, config.maxBodyLimit()))
+		limit := config.maxBodyLimit()
+		body, err := io.ReadAll(io.LimitReader(r.Body, limit))
 		if err != nil {
 			writeError(w, "failed to read request body", http.StatusBadRequest)
 			return
 		}
 		defer r.Body.Close()
+
+		// If body is exactly at the limit, it was likely truncated
+		if int64(len(body)) == limit {
+			writeError(w, "payload too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 
 		var req Request
 		if err := json.Unmarshal(body, &req); err != nil {
@@ -208,10 +259,18 @@ func makeExecuteHandler(config Config) http.HandlerFunc {
 		log.Printf("[%s] Executing task: %s (async: %v)", reqID, req.Task, req.Async)
 
 		if req.Async {
-			go executeBinaryAsync(binaryPath, req.Payload, reqID, config.Timeout)
+			go func() {
+				semaphore <- struct{}{}
+				defer func() { <-semaphore }()
+				executeBinaryAsync(binaryPath, req.Payload, reqID, config.Timeout)
+			}()
 			writeJSON(w, Response{Status: "dispatched", RequestID: reqID})
 			return
 		}
+
+		// Acquire semaphore for synchronous execution
+		semaphore <- struct{}{}
+		defer func() { <-semaphore }()
 
 		// Synchronous execution with timeout
 		timeout := time.Duration(config.Timeout) * time.Second
@@ -359,6 +418,7 @@ func resolveBinary(binPath, taskName string) string {
 
 func writeJSON(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	data, err := json.Marshal(v)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -370,6 +430,7 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 
 func writeError(w http.ResponseWriter, msg string, status int) {
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(status)
 	data, _ := json.Marshal(Response{Status: "error", Error: msg})
 	w.Write(data)

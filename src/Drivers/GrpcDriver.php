@@ -2,6 +2,7 @@
 
 namespace Mpge\Govel\Drivers;
 
+use Mpge\Govel\Concerns\LogsMessages;
 use Mpge\Govel\Contracts\Driver;
 use Mpge\Govel\Contracts\Task;
 use Mpge\Govel\DTO\Result;
@@ -15,6 +16,8 @@ use Mpge\Govel\Exceptions\TaskExecutionException;
  */
 class GrpcDriver implements Driver
 {
+    use LogsMessages;
+
     public function __construct(
         protected string $host,
         protected int $port,
@@ -137,18 +140,4 @@ class GrpcDriver implements Driver
         return 200;
     }
 
-    protected function log(string $message): void
-    {
-        if (class_exists(\Illuminate\Support\Facades\Log::class)) {
-            try {
-                \Illuminate\Support\Facades\Log::warning($message);
-
-                return;
-            } catch (\Throwable) {
-                // Facade not booted
-            }
-        }
-
-        error_log($message);
-    }
 }

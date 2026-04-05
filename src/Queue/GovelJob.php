@@ -24,6 +24,11 @@ class GovelJob implements ShouldQueue
 
     public function handle(GoManager $manager): void
     {
+        if (!is_subclass_of($this->taskClass, \Mpge\Govel\Contracts\Task::class)) {
+            $this->fail(new \RuntimeException("Invalid task class: {$this->taskClass}"));
+            return;
+        }
+
         $result = $this->onDriver
             ? $manager->driver($this->onDriver)->run($manager->resolve($this->taskClass), $this->payload)
             : $manager->run($this->taskClass, $this->payload);
