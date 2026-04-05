@@ -8,6 +8,7 @@ use Mpge\Govel\DTO\Result;
 use Mpge\Govel\Services\GoManager;
 use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
+use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
@@ -88,5 +89,57 @@ class GoManagerTest extends TestCase
         $manager->extend('my-driver', $driver);
 
         $this->assertSame($driver, $manager->driver('my-driver'));
+    }
+
+    #[Test]
+    public function dispatch_delegates_to_driver(): void
+    {
+        $driver = $this->createMock(Driver::class);
+        $driver->expects($this->once())
+            ->method('dispatch');
+
+        $container = $this->makeContainer(['govel' => ['driver' => 'custom']]);
+
+        $manager = new GoManager($container);
+        $manager->extend('custom', $driver);
+
+        $task = new class implements Task {
+            public function name(): string
+            {
+                return 'dispatch-test';
+            }
+        };
+
+        $manager->dispatch($task, ['key' => 'value']);
+    }
+
+    #[Test]
+    public function get_default_driver_returns_config_value(): void
+    {
+        $container = $this->makeContainer(['govel' => ['driver' => 'grpc']]);
+        $manager = new GoManager($container);
+
+        $this->assertSame('grpc', $manager->getDefaultDriver());
+    }
+
+    #[Test]
+    public function get_default_driver_falls_back_to_process(): void
+    {
+        $container = $this->makeContainer([]);
+        $manager = new GoManager($container);
+
+        $this->assertSame('process', $manager->getDefaultDriver());
+    }
+
+    #[Test]
+    public function it_throws_invalid_argument_exception_for_unsupported_driver(): void
+    {
+        $container = $this->makeContainer(['govel' => ['driver' => 'foobar']]);
+        $manager = new GoManager($container);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Unsupported Govel driver [foobar]');
+
+        $manager->driver('foobar');
     }
 }
