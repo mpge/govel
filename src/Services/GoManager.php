@@ -113,9 +113,15 @@ class GoManager
 
     protected function createProcessDriver(): ProcessDriver
     {
+        $process = $this->container['config']['govel.process'] ?? [];
+
         return new ProcessDriver(
             binPath: $this->container['config']['govel.bin_path'] ?? base_path('bin'),
             timeout: (int) ($this->container['config']['govel.timeout'] ?? 30),
+            maxPayloadSize: (int) ($this->container['config']['govel.max_payload_size'] ?? 0),
+            envPassthrough: $process['env'] ?? [],
+            cwd: $process['cwd'] ?? null,
+            memoryLimit: (int) ($process['memory_limit'] ?? 0),
         );
     }
 
@@ -128,6 +134,10 @@ class GoManager
             port: (int) ($config['port'] ?? 9800),
             timeout: (int) ($this->container['config']['govel.timeout'] ?? 30),
             tls: (bool) ($config['tls'] ?? false),
+            connectTimeout: (int) ($config['connect_timeout'] ?? 5),
+            retries: (int) ($config['retries'] ?? 0),
+            retryDelay: (int) ($config['retry_delay'] ?? 100),
+            maxPayloadSize: (int) ($this->container['config']['govel.max_payload_size'] ?? 0),
         );
     }
 

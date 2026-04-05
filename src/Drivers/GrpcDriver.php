@@ -12,8 +12,6 @@ use Mpge\Govel\Exceptions\TaskExecutionException;
  *
  * The Go server exposes an HTTP bridge alongside its gRPC service,
  * so PHP can communicate without requiring the grpc PECL extension.
- * This gives the same benefits as gRPC (persistent process, zero
- * startup overhead, connection pooling) with no PHP extensions.
  */
 class GrpcDriver implements Driver
 {
@@ -22,6 +20,10 @@ class GrpcDriver implements Driver
         protected int $port,
         protected int $timeout,
         protected bool $tls = false,
+        protected int $connectTimeout = 5,
+        protected int $retries = 0,
+        protected int $retryDelay = 100,
+        protected int $maxPayloadSize = 0,
     ) {}
 
     public function run(Task $task, array $payload = []): Result
@@ -29,7 +31,7 @@ class GrpcDriver implements Driver
         $start = hrtime(true);
 
         try {
-            $response = $this->request($task->name(), $payload);
+            $response = $this->requestWithRetry($task->name(), $payload);
             $duration = (hrtime(true) - $start) / 1e6;
 
             return Result::fromOutput($response, $duration);
@@ -43,10 +45,29 @@ class GrpcDriver implements Driver
     public function dispatch(Task $task, array $payload = []): void
     {
         try {
-            $this->request($task->name(), $payload, async: true);
+            $this->requestWithRetry($task->name(), $payload, async: true);
         } catch (\Throwable $e) {
             $this->log("Govel gRPC async task [{$task->name()}] failed: {$e->getMessage()}");
         }
+    }
+
+    protected function requestWithRetry(string $taskName, array $payload, bool $async = false): string
+    {
+        $lastException = null;
+
+        for ($attempt = 0; $attempt <= $this->retries; $attempt++) {
+            try {
+                return $this->request($taskName, $payload, $async);
+            } catch (\Throwable $e) {
+                $lastException = $e;
+
+                if ($attempt < $this->retries) {
+                    usleep($this->retryDelay * 1000);
+                }
+            }
+        }
+
+        throw $lastException;
     }
 
     protected function request(string $taskName, array $payload, bool $async = false): string
@@ -60,12 +81,18 @@ class GrpcDriver implements Driver
             'async' => $async,
         ], JSON_THROW_ON_ERROR);
 
+        if ($this->maxPayloadSize > 0 && strlen($body) > $this->maxPayloadSize) {
+            throw new \OverflowException(
+                "Payload for task [{$taskName}] exceeds maximum size of {$this->maxPayloadSize} bytes."
+            );
+        }
+
         $context = stream_context_create([
             'http' => [
                 'method' => 'POST',
                 'header' => "Content-Type: application/json\r\nAccept: application/json\r\n",
                 'content' => $body,
-                'timeout' => $this->timeout,
+                'timeout' => max($this->connectTimeout, $this->timeout),
                 'ignore_errors' => true,
             ],
             'ssl' => [
@@ -83,7 +110,6 @@ class GrpcDriver implements Driver
             );
         }
 
-        // Check HTTP status from response headers
         $statusCode = $this->parseStatusCode($http_response_header ?? []);
 
         if ($statusCode >= 400) {

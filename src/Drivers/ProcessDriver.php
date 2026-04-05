@@ -16,6 +16,10 @@ class ProcessDriver implements Driver
     public function __construct(
         protected string $binPath,
         protected int $timeout,
+        protected int $maxPayloadSize = 0,
+        protected array $envPassthrough = [],
+        protected ?string $cwd = null,
+        protected int $memoryLimit = 0,
     ) {}
 
     public function run(Task $task, array $payload = []): Result
@@ -24,13 +28,15 @@ class ProcessDriver implements Driver
         $this->ensureBinaryExists($task->name(), $binaryPath);
 
         $input = json_encode($payload, JSON_THROW_ON_ERROR);
+        $this->validatePayloadSize($input, $task->name());
+
         $start = hrtime(true);
 
         try {
-            $process = new Process([$binaryPath], null, null, $input, $this->timeout);
+            $process = $this->createProcess($binaryPath, $input);
             $process->run();
 
-            $duration = (hrtime(true) - $start) / 1e6; // nanoseconds → milliseconds
+            $duration = (hrtime(true) - $start) / 1e6;
 
             if (! $process->isSuccessful()) {
                 return Result::failure(
@@ -41,8 +47,6 @@ class ProcessDriver implements Driver
 
             return Result::fromOutput($process->getOutput(), $duration);
         } catch (ProcessTimedOutException) {
-            $duration = (hrtime(true) - $start) / 1e6;
-
             throw TaskExecutionException::timeout($task->name(), $this->timeout);
         }
     }
@@ -53,12 +57,11 @@ class ProcessDriver implements Driver
         $this->ensureBinaryExists($task->name(), $binaryPath);
 
         $input = json_encode($payload, JSON_THROW_ON_ERROR);
+        $this->validatePayloadSize($input, $task->name());
 
-        $process = new Process([$binaryPath], null, null, $input, null);
+        $process = $this->createProcess($binaryPath, $input, async: true);
         $process->start();
 
-        // Fire-and-forget: detach the process.
-        // Optionally log when complete.
         $process->wait(function (string $type, string $buffer) use ($task) {
             if ($type === Process::ERR) {
                 Log::warning("Govel async task [{$task->name()}] stderr: {$buffer}");
@@ -66,11 +69,67 @@ class ProcessDriver implements Driver
         });
     }
 
+    protected function createProcess(string $binaryPath, string $input, bool $async = false): Process
+    {
+        $command = [];
+
+        // Apply memory limit on Linux via ulimit wrapper
+        if ($this->memoryLimit > 0 && PHP_OS_FAMILY === 'Linux') {
+            $limitKb = $this->memoryLimit * 1024;
+            $command = ['sh', '-c', "ulimit -v {$limitKb} && " . escapeshellarg($binaryPath)];
+        } else {
+            $command = [$binaryPath];
+        }
+
+        $env = $this->buildEnvironment();
+
+        $process = new Process(
+            $command,
+            $this->cwd,
+            $env ?: null,
+            $input,
+            $async ? null : $this->timeout,
+        );
+
+        return $process;
+    }
+
+    protected function buildEnvironment(): ?array
+    {
+        if (empty($this->envPassthrough)) {
+            return null; // inherit all
+        }
+
+        if ($this->envPassthrough === ['*']) {
+            return null; // explicitly inherit all
+        }
+
+        $env = [];
+        foreach ($this->envPassthrough as $key) {
+            $key = trim($key);
+            if ($key !== '' && isset($_SERVER[$key])) {
+                $env[$key] = $_SERVER[$key];
+            } elseif ($key !== '' && ($val = getenv($key)) !== false) {
+                $env[$key] = $val;
+            }
+        }
+
+        return $env ?: null;
+    }
+
+    protected function validatePayloadSize(string $input, string $taskName): void
+    {
+        if ($this->maxPayloadSize > 0 && strlen($input) > $this->maxPayloadSize) {
+            throw new \OverflowException(
+                "Payload for task [{$taskName}] exceeds maximum size of {$this->maxPayloadSize} bytes."
+            );
+        }
+    }
+
     protected function resolveBinaryPath(Task $task): string
     {
         $binary = $task->name();
 
-        // On Windows, append .exe if not present
         if (PHP_OS_FAMILY === 'Windows' && ! str_ends_with($binary, '.exe')) {
             $binary .= '.exe';
         }

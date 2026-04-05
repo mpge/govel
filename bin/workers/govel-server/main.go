@@ -17,13 +17,17 @@ import (
 	"time"
 )
 
-const maxRequestBody = 10 * 1024 * 1024 // 10MB
-
 // Config holds the server configuration.
+// All values can be set via environment variables or govel-server.json.
 type Config struct {
-	Port    int    `json:"port"`
-	BinPath string `json:"bin_path"`
-	Timeout int    `json:"timeout"` // seconds, 0 = no timeout
+	Port            int    `json:"port"`
+	BinPath         string `json:"bin_path"`
+	Timeout         int    `json:"timeout"`           // task execution timeout in seconds, 0 = no timeout
+	MaxRequestBody  int64  `json:"max_request_body"`  // max request body size in bytes, 0 = 10MB default
+	ReadTimeout     int    `json:"read_timeout"`      // HTTP read timeout in seconds
+	WriteTimeout    int    `json:"write_timeout"`     // HTTP write timeout in seconds
+	IdleTimeout     int    `json:"idle_timeout"`      // HTTP idle timeout in seconds
+	ShutdownTimeout int    `json:"shutdown_timeout"`  // graceful shutdown timeout in seconds
 }
 
 // Request represents an incoming task execution request from PHP.
@@ -56,9 +60,9 @@ func main() {
 	server := &http.Server{
 		Addr:         addr,
 		Handler:      mux,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: time.Duration(config.Timeout+5) * time.Second,
-		IdleTimeout:  120 * time.Second,
+		ReadTimeout:  time.Duration(config.ReadTimeout) * time.Second,
+		WriteTimeout: time.Duration(config.WriteTimeout) * time.Second,
+		IdleTimeout:  time.Duration(config.IdleTimeout) * time.Second,
 	}
 
 	// Graceful shutdown
@@ -68,7 +72,7 @@ func main() {
 		sig := <-sigCh
 		log.Printf("Received %s, shutting down gracefully...", sig)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(config.ShutdownTimeout)*time.Second)
 		defer cancel()
 
 		if err := server.Shutdown(ctx); err != nil {
@@ -76,7 +80,7 @@ func main() {
 		}
 	}()
 
-	log.Printf("Govel server starting on %s (bin_path: %s, timeout: %ds)", addr, config.BinPath, config.Timeout)
+	log.Printf("Govel server starting on %s (bin_path: %s, timeout: %ds, max_body: %d bytes)", addr, config.BinPath, config.Timeout, config.maxBodyLimit())
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Server failed: %v", err)
@@ -85,23 +89,49 @@ func main() {
 	log.Println("Server stopped.")
 }
 
+func (c Config) maxBodyLimit() int64 {
+	if c.MaxRequestBody > 0 {
+		return c.MaxRequestBody
+	}
+	return 10 * 1024 * 1024 // default 10MB
+}
+
 func loadConfig() Config {
 	config := Config{
-		Port:    9800,
-		BinPath: "./bin",
-		Timeout: 30,
+		Port:            9800,
+		BinPath:         "./bin",
+		Timeout:         30,
+		MaxRequestBody:  0, // 0 = use default (10MB)
+		ReadTimeout:     30,
+		WriteTimeout:    35,
+		IdleTimeout:     120,
+		ShutdownTimeout: 10,
 	}
 
-	if port := os.Getenv("GOVEL_PORT"); port != "" {
-		fmt.Sscanf(port, "%d", &config.Port)
+	envInt := func(key string, target *int) {
+		if v := os.Getenv(key); v != "" {
+			fmt.Sscanf(v, "%d", target)
+		}
 	}
+	envInt64 := func(key string, target *int64) {
+		if v := os.Getenv(key); v != "" {
+			fmt.Sscanf(v, "%d", target)
+		}
+	}
+
+	envInt("GOVEL_PORT", &config.Port)
+	envInt("GOVEL_TIMEOUT", &config.Timeout)
+	envInt("GOVEL_SERVER_READ_TIMEOUT", &config.ReadTimeout)
+	envInt("GOVEL_SERVER_WRITE_TIMEOUT", &config.WriteTimeout)
+	envInt("GOVEL_SERVER_IDLE_TIMEOUT", &config.IdleTimeout)
+	envInt("GOVEL_SERVER_SHUTDOWN_TIMEOUT", &config.ShutdownTimeout)
+	envInt64("GOVEL_SERVER_MAX_BODY", &config.MaxRequestBody)
+
 	if binPath := os.Getenv("GOVEL_BIN_PATH"); binPath != "" {
 		config.BinPath = binPath
 	}
-	if timeout := os.Getenv("GOVEL_TIMEOUT"); timeout != "" {
-		fmt.Sscanf(timeout, "%d", &config.Timeout)
-	}
 
+	// Config file overrides env
 	if data, err := os.ReadFile("govel-server.json"); err == nil {
 		if err := json.Unmarshal(data, &config); err != nil {
 			log.Printf("Warning: failed to parse govel-server.json: %v", err)
@@ -127,7 +157,7 @@ func makeExecuteHandler(config Config) http.HandlerFunc {
 		reqID := fmt.Sprintf("govel-%d-%d", time.Now().UnixMilli(), requestCounter)
 
 		// Limit request body size
-		body, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBody))
+		body, err := io.ReadAll(io.LimitReader(r.Body, config.maxBodyLimit()))
 		if err != nil {
 			writeError(w, "failed to read request body", http.StatusBadRequest)
 			return
