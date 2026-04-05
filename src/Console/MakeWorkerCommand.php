@@ -13,6 +13,13 @@ class MakeWorkerCommand extends Command
     public function handle(): int
     {
         $name = $this->argument('name');
+
+        if (! preg_match('/^[a-z0-9][a-z0-9_-]*$/', $name)) {
+            $this->error('Worker name must be lowercase alphanumeric with hyphens/underscores (e.g. process-image).');
+
+            return self::FAILURE;
+        }
+
         $workerDir = base_path("bin/workers/{$name}");
 
         if (is_dir($workerDir)) {

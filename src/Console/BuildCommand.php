@@ -22,6 +22,12 @@ class BuildCommand extends Command
         $name = $this->argument('name');
         $workersBase = base_path('bin/workers');
 
+        if ($name && ! preg_match('/^[a-zA-Z0-9_-]{1,128}$/', $name)) {
+            $this->error('Worker name must contain only alphanumeric characters, hyphens, and underscores.');
+
+            return self::FAILURE;
+        }
+
         if ($name) {
             $workers = ["{$workersBase}/{$name}"];
 
