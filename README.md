@@ -58,6 +58,86 @@ Publish the config file:
 php artisan vendor:publish --tag=govel-config
 ```
 
+## Quick Start
+
+Govel provides Artisan commands to scaffold everything you need:
+
+```bash
+# 1. Create a task class
+php artisan govel:make-task ProcessImage
+# → app/Tasks/ProcessImage.php
+
+# 2. Scaffold the Go worker
+php artisan govel:make-worker process-image
+# → bin/workers/process-image/main.go
+
+# 3. Compile the worker
+php artisan govel:build process-image
+# → bin/process-image
+
+# 4. Run it
+Govel::run(ProcessImage::class, ['path' => '/tmp/photo.jpg']);
+```
+
+## Artisan Commands
+
+| Command | Description |
+|---|---|
+| `govel:make-task {name}` | Scaffold a new Task class at `app/Tasks/{Name}.php` |
+| `govel:make-worker {name}` | Scaffold a Go worker with `main.go` and `go.mod` at `bin/workers/{name}/` |
+| `govel:build {name?}` | Compile Go workers into binaries. Omit name to build all. |
+| `govel:list` | List all available tasks with binary status (found/missing) |
+
+### govel:make-task
+
+```bash
+php artisan govel:make-task ResizeImage
+```
+
+Generates `app/Tasks/ResizeImage.php`:
+
+```php
+namespace App\Tasks;
+
+use Mpge\Govel\Contracts\Task;
+
+class ResizeImage implements Task
+{
+    public function name(): string
+    {
+        return 'resize-image';
+    }
+}
+```
+
+### govel:make-worker
+
+```bash
+php artisan govel:make-worker resize-image
+```
+
+Creates `bin/workers/resize-image/` with a Go template that reads JSON from stdin and writes JSON to stdout.
+
+### govel:build
+
+```bash
+# Build a specific worker
+php artisan govel:build resize-image
+
+# Build all workers
+php artisan govel:build
+```
+
+Compiles Go source in `bin/workers/*/` to binaries in `bin/`. Requires Go to be installed.
+
+### govel:list
+
+```bash
+php artisan govel:list
+```
+
+Outputs a table showing each task name, its binary path, and whether the binary exists.
+
 ## Drivers
 
 Govel ships with three drivers. Set `GOVEL_DRIVER` in your `.env`:
@@ -111,60 +191,6 @@ Load-balances tasks across multiple Govel server nodes with automatic failover.
         ['host' => '10.0.0.3', 'port' => 9800],
     ],
 ],
-```
-
-## Quick Start
-
-### 1. Define a PHP Task
-
-```php
-namespace App\Tasks;
-
-use Mpge\Govel\Contracts\Task;
-
-class ProcessImage implements Task
-{
-    public function name(): string
-    {
-        return 'process-image';
-    }
-}
-```
-
-### 2. Write the Go Worker
-
-```go
-package main
-
-import (
-    "encoding/json"
-    "fmt"
-    "io"
-    "os"
-)
-
-func main() {
-    input, _ := io.ReadAll(os.Stdin)
-
-    var payload map[string]interface{}
-    json.Unmarshal(input, &payload)
-
-    result, _ := json.Marshal(map[string]interface{}{
-        "status": "done",
-    })
-    fmt.Println(string(result))
-}
-```
-
-### 3. Compile & Run
-
-```bash
-cd bin/workers/process-image
-go build -o ../../process-image .
-```
-
-```php
-$result = Govel::run(ProcessImage::class, ['path' => '/tmp/photo.jpg']);
 ```
 
 ## Queue Integration
