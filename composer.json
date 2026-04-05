@@ -1,0 +1,46 @@
+{
+    "name": "govel/govel",
+    "description": "Execute high-performance Go tasks from Laravel as if they were native jobs.",
+    "keywords": ["laravel", "go", "golang", "tasks", "process", "performance"],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Govel Contributors"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "illuminate/contracts": "^11.0|^12.0",
+        "illuminate/support": "^11.0|^12.0",
+        "symfony/process": "^7.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^9.0|^10.0",
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Govel\\Govel\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Govel\\Govel\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Govel\\Govel\\GovelServiceProvider"
+            ],
+            "aliases": {
+                "Govel": "Govel\\Govel\\Facades\\Govel"
+            }
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
