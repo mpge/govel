@@ -6,6 +6,7 @@
     <a href="https://packagist.org/packages/mpge/govel"><img src="https://img.shields.io/packagist/v/mpge/govel.svg?style=flat-square" alt="Latest Version on Packagist"></a>
     <a href="https://packagist.org/packages/mpge/govel"><img src="https://img.shields.io/packagist/dt/mpge/govel.svg?style=flat-square" alt="Total Downloads"></a>
     <a href="https://packagist.org/packages/mpge/govel"><img src="https://img.shields.io/packagist/php-v/mpge/govel.svg?style=flat-square" alt="PHP Version"></a>
+    <a href="https://github.com/mpge/govel/actions"><img src="https://img.shields.io/github/actions/workflow/status/mpge/govel/tests.yml?branch=main&style=flat-square&label=tests" alt="Tests"></a>
     <a href="https://github.com/mpge/govel/blob/main/LICENSE"><img src="https://img.shields.io/packagist/l/mpge/govel.svg?style=flat-square" alt="License"></a>
 </p>
 
@@ -22,22 +23,21 @@ Some workloads — image processing, data crunching, cryptography, file parsing 
 
 ```php
 use Mpge\Govel\Facades\Govel;
-use Mpge\Govel\Tasks\ProcessImage;
+use App\Tasks\ProcessImage;
 
-// Synchronous — blocks until the Go binary returns
+// Synchronous
 $result = Govel::run(ProcessImage::class, [
     'path' => '/tmp/image.jpg',
     'width' => 800,
 ]);
 
-$result->success;   // true
-$result->output;    // ['status' => 'processed', 'format' => 'webp', ...]
-$result->duration;  // 52.3 (milliseconds)
+// Asynchronous (fire-and-forget)
+Govel::dispatch(ProcessImage::class, ['path' => '/tmp/image.jpg']);
 
-// Asynchronous — fire-and-forget
-Govel::dispatch(ProcessImage::class, [
-    'path' => '/tmp/image.jpg',
-]);
+// Queue (Laravel queue integration)
+Govel::queue(ProcessImage::class, ['path' => '/tmp/image.jpg'])
+    ->onQueue('processing')
+    ->delay(30);
 ```
 
 ## Requirements
@@ -58,15 +58,60 @@ Publish the config file:
 php artisan vendor:publish --tag=govel-config
 ```
 
-## Configuration
+## Drivers
 
-`config/govel.php`:
+Govel ships with three drivers. Set `GOVEL_DRIVER` in your `.env`:
 
-| Key | Default | Description |
+| Driver | Use Case | How It Works |
 |---|---|---|
-| `driver` | `process` | Execution driver |
-| `bin_path` | `base_path('bin')` | Directory containing compiled Go binaries |
-| `timeout` | `30` | Max execution time in seconds |
+| `process` (default) | Simple, single-server | Spawns a Go binary per task via Symfony Process |
+| `grpc` | Persistent server, zero startup overhead | HTTP/JSON bridge to a long-running Go server |
+| `distributed` | Multi-node, high availability | Load-balanced requests across multiple Go servers |
+
+### Process Driver
+
+The default. Each task spawns a Go binary, communicates via stdin/stdout JSON.
+
+```env
+GOVEL_DRIVER=process
+GOVEL_BIN_PATH=/path/to/bin
+GOVEL_TIMEOUT=30
+```
+
+### gRPC Driver
+
+Connects to a persistent Go server — no process startup cost per task. Uses HTTP/JSON (no PHP extensions required).
+
+```env
+GOVEL_DRIVER=grpc
+GOVEL_GRPC_HOST=127.0.0.1
+GOVEL_GRPC_PORT=9800
+```
+
+Start the included Go server:
+
+```bash
+cd bin/workers/govel-server
+go build -o ../../govel-server .
+GOVEL_PORT=9800 GOVEL_BIN_PATH=../../ ../../govel-server
+```
+
+### Distributed Driver
+
+Load-balances tasks across multiple Govel server nodes with automatic failover.
+
+```php
+// config/govel.php
+'driver' => 'distributed',
+'distributed' => [
+    'strategy' => 'round-robin', // or 'least-connections'
+    'nodes' => [
+        ['host' => '10.0.0.1', 'port' => 9800],
+        ['host' => '10.0.0.2', 'port' => 9800],
+        ['host' => '10.0.0.3', 'port' => 9800],
+    ],
+],
+```
 
 ## Quick Start
 
@@ -86,11 +131,7 @@ class ProcessImage implements Task
 }
 ```
 
-The `name()` method maps directly to a binary in your `bin/` directory.
-
 ### 2. Write the Go Worker
-
-Create `bin/workers/process-image/main.go`:
 
 ```go
 package main
@@ -108,8 +149,6 @@ func main() {
     var payload map[string]interface{}
     json.Unmarshal(input, &payload)
 
-    // Your processing logic here...
-
     result, _ := json.Marshal(map[string]interface{}{
         "status": "done",
     })
@@ -117,17 +156,31 @@ func main() {
 }
 ```
 
-### 3. Compile
+### 3. Compile & Run
 
 ```bash
 cd bin/workers/process-image
 go build -o ../../process-image .
 ```
 
-### 4. Run
-
 ```php
 $result = Govel::run(ProcessImage::class, ['path' => '/tmp/photo.jpg']);
+```
+
+## Queue Integration
+
+Dispatch Go tasks onto Laravel queues:
+
+```php
+// Basic queue dispatch
+Govel::queue(ProcessImage::class, ['path' => '/tmp/img.jpg']);
+
+// With options
+Govel::queue(ProcessImage::class, $payload)
+    ->onQueue('processing')
+    ->onConnection('redis')
+    ->delay(60)
+    ->via('grpc');  // Use a specific Govel driver
 ```
 
 ## Go Worker Contract
@@ -141,9 +194,9 @@ Every Go binary must:
 
 ## Result DTO
 
-`Govel::run()` returns an immutable `Result` object:
-
 ```php
+$result = Govel::run(ProcessImage::class, $payload);
+
 $result->success;   // bool
 $result->output;    // array (decoded JSON from Go)
 $result->error;     // string|null
@@ -164,7 +217,6 @@ try {
     // Process timed out or failed
 }
 
-// Non-critical failures return in the Result:
 if (! $result->success) {
     logger()->error($result->error);
 }
@@ -172,13 +224,9 @@ if (! $result->success) {
 
 ## Extending with Custom Drivers
 
-Govel is built for extensibility. Register your own drivers:
-
 ```php
-Govel::extend('grpc', new GrpcDriver(/* ... */));
-
-// Then use it:
-Govel::driver('grpc')->run($task, $payload);
+Govel::extend('custom', new MyCustomDriver());
+Govel::driver('custom')->run($task, $payload);
 ```
 
 ## Architecture
@@ -186,18 +234,48 @@ Govel::driver('grpc')->run($task, $payload);
 ```
 Laravel (PHP)
   → Govel Facade
-    → GoManager (resolves driver)
-      → ProcessDriver (Symfony Process)
-        → Go binary (stdin/stdout JSON)
+    → GoManager
+      ├── ProcessDriver  → Go binary (stdin/stdout)
+      ├── GrpcDriver     → Go HTTP server (persistent)
+      └── DistributedDriver → Multiple Go servers (load balanced)
           → Result DTO
+```
+
+## Configuration Reference
+
+```php
+// config/govel.php
+return [
+    'driver'  => env('GOVEL_DRIVER', 'process'),
+    'bin_path' => env('GOVEL_BIN_PATH', base_path('bin')),
+    'timeout'  => env('GOVEL_TIMEOUT', 30),
+
+    'grpc' => [
+        'host' => env('GOVEL_GRPC_HOST', '127.0.0.1'),
+        'port' => env('GOVEL_GRPC_PORT', 9800),
+        'tls'  => env('GOVEL_GRPC_TLS', false),
+    ],
+
+    'distributed' => [
+        'strategy' => env('GOVEL_DIST_STRATEGY', 'round-robin'),
+        'tls'      => env('GOVEL_DIST_TLS', false),
+        'nodes'    => [],
+    ],
+
+    'queue' => [
+        'connection' => env('GOVEL_QUEUE_CONNECTION'),
+        'queue'      => env('GOVEL_QUEUE_NAME', 'govel'),
+    ],
+];
 ```
 
 ## Roadmap
 
-- [ ] gRPC driver
-- [ ] Queue integration
-- [ ] Distributed workers
-- [ ] Horizon-style dashboard
+- [x] Process driver
+- [x] gRPC driver (HTTP/JSON bridge)
+- [x] Queue integration
+- [x] Distributed workers with failover
+- [ ] Govel Monitor — real-time task dashboard ([mpge/govel-monitor](https://github.com/mpge/govel-monitor))
 
 ## License
 
