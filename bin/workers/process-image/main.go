@@ -2,10 +2,9 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
-	"io"
-	"os"
 	"time"
+
+	govel "github.com/mpge/govel/sdk"
 )
 
 // Request represents the incoming JSON payload from PHP.
@@ -27,52 +26,33 @@ type Response struct {
 }
 
 func main() {
-	start := time.Now()
+	govel.Run(func(payload json.RawMessage) (interface{}, error) {
+		start := time.Now()
 
-	input, err := io.ReadAll(os.Stdin)
-	if err != nil {
-		fatal("failed to read stdin: " + err.Error())
-	}
+		req := govel.MustParse[Request](payload)
 
-	var req Request
-	if err := json.Unmarshal(input, &req); err != nil {
-		fatal("invalid JSON input: " + err.Error())
-	}
+		govel.Require(req.Path != "", "path is required")
 
-	if req.Path == "" {
-		fatal("path is required")
-	}
+		// Simulate image processing work
+		time.Sleep(50 * time.Millisecond)
 
-	// Simulate image processing work
-	time.Sleep(50 * time.Millisecond)
+		width := req.Width
+		if width == 0 {
+			width = 1920
+		}
+		height := req.Height
+		if height == 0 {
+			height = 1080
+		}
 
-	width := req.Width
-	if width == 0 {
-		width = 1920
-	}
-	height := req.Height
-	if height == 0 {
-		height = 1080
-	}
-
-	resp := Response{
-		Status:    "processed",
-		Path:      req.Path,
-		Width:     width,
-		Height:    height,
-		Format:    "webp",
-		SizeBytes: 245760,
-		Duration:  time.Since(start).String(),
-	}
-
-	out, err := json.Marshal(resp)
-	if err != nil {
-		fatal("failed to marshal response: " + err.Error())
-	}
-	fmt.Print(string(out))
-}
-
-func fatal(msg string) {
-	fmt.Fprint(os.Stderr, msg)
-	os.Exit(1)
+		return Response{
+			Status:    "processed",
+			Path:      req.Path,
+			Width:     width,
+			Height:    height,
+			Format:    "webp",
+			SizeBytes: 245760,
+			Duration:  time.Since(start).String(),
+		}, nil
+	})
 }

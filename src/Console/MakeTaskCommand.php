@@ -41,21 +41,19 @@ class MakeTaskCommand extends Command
     {
         $rootNamespace = rtrim($this->laravel->getNamespace(), '\\');
 
-        return <<<PHP
-        <?php
-
-        namespace {$rootNamespace}\Tasks;
-
-        use Mpge\Govel\Contracts\Task;
-
-        class {$name} implements Task
-        {
-            public function name(): string
-            {
-                return '{$kebab}';
-            }
-        }
-        PHP;
+        return "<?php\n"
+            . "\n"
+            . "namespace {$rootNamespace}\\Tasks;\n"
+            . "\n"
+            . "use Mpge\\Govel\\Contracts\\Task;\n"
+            . "\n"
+            . "class {$name} implements Task\n"
+            . "{\n"
+            . "    public function name(): string\n"
+            . "    {\n"
+            . "        return '{$kebab}';\n"
+            . "    }\n"
+            . "}\n";
     }
 
     /**
