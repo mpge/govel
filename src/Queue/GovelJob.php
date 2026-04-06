@@ -36,7 +36,7 @@ class GovelJob implements ShouldQueue
         if (! $result->success) {
             Log::error("Govel queued task [{$this->taskClass}] failed: {$result->error}", [
                 'task' => $this->taskClass,
-                'payload' => $this->payload,
+                'payload_keys' => array_keys($this->payload),
                 'duration' => $result->duration,
             ]);
 

@@ -114,6 +114,12 @@ return [
         | Delay in milliseconds between retry attempts.
         */
         'retry_delay' => (int) env('GOVEL_GRPC_RETRY_DELAY', 100),
+
+        /*
+        | Optional authentication token sent as a Bearer token
+        | in the Authorization header to the gRPC server.
+        */
+        'auth_token' => env('GOVEL_AUTH_TOKEN'),
     ],
 
     /*

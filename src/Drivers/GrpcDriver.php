@@ -27,6 +27,7 @@ class GrpcDriver implements Driver
         protected int $retries = 0,
         protected int $retryDelay = 100,
         protected int $maxPayloadSize = 0,
+        protected ?string $authToken = null,
     ) {}
 
     public function run(Task $task, array $payload = []): Result
@@ -90,10 +91,16 @@ class GrpcDriver implements Driver
             );
         }
 
+        $headers = "Content-Type: application/json\r\nAccept: application/json\r\n";
+
+        if ($this->authToken !== null && $this->authToken !== '') {
+            $headers .= "Authorization: Bearer {$this->authToken}\r\n";
+        }
+
         $context = stream_context_create([
             'http' => [
                 'method' => 'POST',
-                'header' => "Content-Type: application/json\r\nAccept: application/json\r\n",
+                'header' => $headers,
                 'content' => $body,
                 'timeout' => max($this->connectTimeout, $this->timeout),
                 'ignore_errors' => true,
@@ -114,6 +121,14 @@ class GrpcDriver implements Driver
         }
 
         $statusCode = $this->parseStatusCode($http_response_header ?? []);
+
+        if ($statusCode === 0) {
+            throw TaskExecutionException::processError(
+                $taskName,
+                'Unable to determine HTTP status from response',
+                0,
+            );
+        }
 
         if ($statusCode >= 400) {
             $decoded = json_decode($response, true);
@@ -137,7 +152,7 @@ class GrpcDriver implements Driver
             }
         }
 
-        return 200;
+        return 0;
     }
 
 }

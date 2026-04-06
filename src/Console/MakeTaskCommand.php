@@ -39,10 +39,12 @@ class MakeTaskCommand extends Command
 
     protected function buildStub(string $name, string $kebab): string
     {
+        $rootNamespace = rtrim($this->laravel->getNamespace(), '\\');
+
         return <<<PHP
         <?php
 
-        namespace App\Tasks;
+        namespace {$rootNamespace}\Tasks;
 
         use Mpge\Govel\Contracts\Task;
 

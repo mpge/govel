@@ -50,10 +50,11 @@ jobs:
         with:
           go-version: '1.21'
 
-      - name: Vet and build govel-server
+      - name: Vet, test, and build govel-server
         run: |
           cd bin/workers/govel-server
           go vet ./...
+          go test ./...
           go build -o /dev/null .
 
       - name: Vet and build process-image
@@ -62,7 +63,8 @@ jobs:
           go vet ./...
           go build -o /dev/null .
 
-      - name: Vet govel-sdk
+      - name: Vet and test govel-sdk
         run: |
           cd bin/workers/govel-sdk
           go vet ./...
+          go test ./...

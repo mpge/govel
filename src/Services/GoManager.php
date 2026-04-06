@@ -138,6 +138,7 @@ class GoManager
             retries: (int) ($config['retries'] ?? 0),
             retryDelay: (int) ($config['retry_delay'] ?? 100),
             maxPayloadSize: (int) ($this->container['config']['govel.max_payload_size'] ?? 0),
+            authToken: $config['auth_token'] ?? null,
         );
     }
 
